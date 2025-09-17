@@ -477,8 +477,6 @@ def find_writable_path_for_volume(mount_path):
     return mount_path
 
 
-
-
 def get_free_space(path):
     """Get free space in bytes using psutil."""
     try:
@@ -491,9 +489,6 @@ def get_free_space(path):
             return st.f_bavail * st.f_frsize
         except:
             return 0
-
-
-
 
 
 def interactive_drive_selection():
@@ -739,7 +734,7 @@ def estimate_write_speed():
 #     Returns bytes per second, or None if benchmark fails.
 #     """
 #     try:
-#         test_file = os.path.join(path, '.dwipe_speed_test.tmp')
+#         test_file = os.path.join(path, '.Securewipe_Complete_disk.tmp')
         
 #         # Generate test data
 #         test_data = os.urandom(min(test_size, 10*1024*1024))  # Max 10MB chunks
@@ -1004,7 +999,7 @@ def wipe_free_space(root='/', passes=3, block_size=1048576, verify=False, patter
     # Format for display only once
     free_space_display = format_size(free_space)
         
-    fname = os.path.join(root, '.dwipe_free_space.tmp')
+    fname = os.path.join(root, '.Securewipe_free_space.tmp')
     
     # Set up signal handlers and cleanup functions for the temp file
     temp_files = [fname]
@@ -1934,7 +1929,7 @@ def format_disk(disk_path, filesystem='exfat', label=None, no_confirm=False, pas
                 print(f"{GREEN}Free space to wipe: {free_space_display}{RESET}")
                 
                 # Create temporary file path
-                fname = os.path.join(mount_point, '.dwipe_free_space.tmp')
+                fname = os.path.join(mount_point, '.Securewipe_Complete_disk.tmp')
                 temp_files = [fname]
                 
                 # Set up cleanup function
@@ -2040,7 +2035,7 @@ def format_disk(disk_path, filesystem='exfat', label=None, no_confirm=False, pas
                     progress_bar_container['instance'] = progress_bar
                     
                     # Create a unique temporary file for each pass
-                    fname = os.path.join(mount_point, f'.dwipe_free_space_{p+1}.tmp')
+                    fname = os.path.join(mount_point, f'.Securewipe_Complete_disk_{p+1}.tmp')
                     if fname not in temp_files:
                         temp_files.append(fname)
                         
@@ -2199,8 +2194,12 @@ def format_disk(disk_path, filesystem='exfat', label=None, no_confirm=False, pas
     except Exception as e:
         print(f"{RED}{BRIGHT}Error during secure disk erase: {e}{RESET}")
         sys.exit(1)
+
+
+
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='DWipe – Secure Free‑Space Wiper')
+    parser = argparse.ArgumentParser(description='SecureWipe – Secure Free‑Space Wiper')
     
     # Create subparsers for different modes
     subparsers = parser.add_subparsers(dest='mode', help='Operation mode')

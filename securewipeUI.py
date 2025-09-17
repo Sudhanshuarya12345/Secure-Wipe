@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DWipe GUI - Comprehensive GUI interface for the DWipe secure data wiping tool
+Secure Wipe GUI - Comprehensive GUI interface for the Secure Wipe secure data wiping tool
 Copyright 2025 REDD - MIT License
 
 Features all capabilities from the CLI version in an intuitive graphical interface:
@@ -26,9 +26,9 @@ import argparse
 import errno
 import re
 
-# Import the original DWipe functions
+# Import the original Secure Wipe functions
 sys.path.insert(0, os.path.dirname(__file__))
-from dwipe import (
+from securewipe import (
     ensure_venv, get_physical_drives, wipe_free_space, format_disk,
     format_size, SELECTED_DISK_INFO, check_hpa_dco, remove_hpa_dco, 
     clear_smart_data, secure_erase_enhanced, estimate_operation_time,
@@ -37,10 +37,10 @@ from dwipe import (
     clear_drive_cache, handle_remapped_sectors, estimate_write_speed
 )
 
-class DWipeGUI:
+class SecureWipeGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("DWipe v1.5 - Secure Data Wiping Tool")
+        self.root.title("Secure Wipe v1.5 - Secure Data Wiping Tool")
         self.root.geometry("900x750")
         self.root.resizable(False, False)
         
@@ -89,7 +89,7 @@ class DWipeGUI:
         
         # Set window icon and additional properties
         try:
-            self.root.iconname("DWipe")
+            self.root.iconname("Secure Wipe")
         except:
             pass
         
@@ -122,7 +122,7 @@ class DWipeGUI:
         self.notebook.add(drive_frame, text="Drive Selection")
         
         # Title
-        title_label = ttk.Label(drive_frame, text="DWipe - Secure Data Wiping Tool", 
+        title_label = ttk.Label(drive_frame, text="Secure Wipe - Secure Data Wiping Tool", 
                                font=('Arial', 16, 'bold'))
         title_label.pack(pady=10)
         
@@ -171,11 +171,11 @@ class DWipeGUI:
         left_buttons = ttk.Frame(button_frame)
         left_buttons.pack(side=tk.LEFT)
         
-        self.wipe_btn = ttk.Button(left_buttons, text=" Wipe Free Space", 
+        self.wipe_btn = ttk.Button(left_buttons, text="Free Space Wipe", 
                                   command=self.wipe_free_space_gui, state=tk.DISABLED)
         self.wipe_btn.pack(side=tk.LEFT, padx=5)
         
-        self.format_btn = ttk.Button(left_buttons, text=" Format Disk", 
+        self.format_btn = ttk.Button(left_buttons, text="Complete secure wipe", 
                                     command=self.format_disk_gui, state=tk.DISABLED)
         self.format_btn.pack(side=tk.LEFT, padx=5)
         
@@ -289,7 +289,6 @@ class DWipeGUI:
         # Filesystem
         ttk.Label(format_frame, text="Filesystem:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
         
-        # Get available filesystems based on OS using dwipe's platform detection
         import platform
         fs_options = ["exfat", "fat32", "ntfs"]
         if platform.system() == 'Darwin':
@@ -492,7 +491,7 @@ Filesystem: {self.selected_drive['fstype']}"""
         self.drive_details_text.config(state=tk.DISABLED)
             
     def get_block_size_bytes(self):
-        """Convert block size string to bytes using dwipe's parse_size function"""
+        """Convert block size string to bytes using Secure wipe's parse_size function"""
         size_str = self.block_size_var.get()
         return parse_size(size_str) or 1048576  # Default to 1MB if parsing fails
         
@@ -665,29 +664,52 @@ Filesystem: {self.selected_drive['fstype']}"""
         except Exception as e:
             self.progress_queue.put(("error", f"Error during wiping: {e}"))
             
+    # def format_thread(self):
+    #     """Thread function for formatting disk"""
+    #     try:
+    #         # Get parameters
+    #         disk_path = self.selected_drive['device']
+    #         filesystem = self.filesystem_var.get()
+    #         label = self.label_var.get() if self.label_var.get() else None
+    #         passes = self.passes_var.get()
+    #         pattern = self.pattern_var.get()
+    #         verify = self.verify_var.get()
+            
+    #         self.progress_queue.put(("log", f"Starting disk format: {disk_path}"))
+    #         self.progress_queue.put(("log", f"Filesystem: {filesystem}, Label: {label or 'None'}"))
+    #         self.progress_queue.put(("log", f"Passes: {passes}, Pattern: {pattern}"))
+            
+    #         # Call the core formatting logic directly without confirmations
+    #         self.perform_disk_format(disk_path, filesystem, label, passes, pattern, verify)
+            
+    #         self.progress_queue.put(("complete", "Disk formatting completed successfully!"))
+            
+    #     except Exception as e:
+    #         self.progress_queue.put(("error", f"Error during formatting: {e}"))
     def format_thread(self):
-        """Thread function for formatting disk"""
         try:
-            # Get parameters
+            # Gather parameters
             disk_path = self.selected_drive['device']
             filesystem = self.filesystem_var.get()
-            label = self.label_var.get() if self.label_var.get() else None
+            label = self.label_var.get() or None
             passes = self.passes_var.get()
             pattern = self.pattern_var.get()
             verify = self.verify_var.get()
-            
-            self.progress_queue.put(("log", f"Starting disk format: {disk_path}"))
-            self.progress_queue.put(("log", f"Filesystem: {filesystem}, Label: {label or 'None'}"))
-            self.progress_queue.put(("log", f"Passes: {passes}, Pattern: {pattern}"))
-            
-            # Call the core formatting logic directly without confirmations
-            self.perform_disk_format(disk_path, filesystem, label, passes, pattern, verify)
-            
+
+            # Use the wrapper that resolves platform-specific targets and calls core formatter
+            self.perform_disk_format(
+                disk_path,
+                filesystem,
+                label,
+                passes,
+                pattern,
+                verify
+            )
+
             self.progress_queue.put(("complete", "Disk formatting completed successfully!"))
-            
         except Exception as e:
             self.progress_queue.put(("error", f"Error during formatting: {e}"))
-            
+
     def stop_operation(self):
         """Stop the current operation"""
         if self.operation_running and self.operation_thread:
@@ -711,7 +733,8 @@ Filesystem: {self.selected_drive['fstype']}"""
         if hasattr(self, 'benchmark_btn'):
             self.benchmark_btn.config(state=tk.NORMAL if self.selected_drive else tk.DISABLED)
         self.stop_btn.config(state=tk.DISABLED)
-        self.certificate_btn.config(state=tk.DISABLED)
+# ---------------------------------------------------------------------------------
+        # self.certificate_btn.config(state=tk.NORMAL)
         
         self.progress_bar.stop()
         self.progress_bar.config(mode='determinate')
@@ -793,9 +816,9 @@ Filesystem: {self.selected_drive['fstype']}"""
                     # Enable certificate button on success
                     print("Operation complete, trying to enabling certificate button")
                     try:
-                        print("Enabling certificate button")
+                        time.sleep(1)
+                        # print("Enabling certificate button")
                         self.certificate_btn.config(state=tk.NORMAL)
-                        time.sleep(10)
 # ---------------------------------------------------------------------------------------------
                     except Exception:
                         print("Failed to enable certificate button")
@@ -835,7 +858,6 @@ Filesystem: {self.selected_drive['fstype']}"""
                 
                 self.log_message(f"Starting speed benchmark on {mount_point}", "INFO")
                 
-                # Use dwipe's benchmark function
                 speed = benchmark_write_speed(mount_point, test_size=50*1024*1024)  # 50MB test
                 
                 if speed:
@@ -936,7 +958,7 @@ Filesystem: {self.selected_drive['fstype']}"""
         import tempfile
         import os
         
-        fname = os.path.join(root_path, '.dwipe_free_space.tmp')
+        fname = os.path.join(root_path, '.securewipe_free_space.tmp')
         
         try:
             for p in range(passes):
@@ -1085,7 +1107,7 @@ def main():
         
     # Create and run GUI
     root = tk.Tk()
-    app = DWipeGUI(root)
+    app = SecureWipeGUI(root)
     
     try:
         root.mainloop()
@@ -1096,8 +1118,25 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", type=str, help="User details")
+    parser.add_argument("--elevated", action="store_true", help="Internal flag to indicate elevated relaunch")
     args = parser.parse_args()
-    print(args.user)
+    if args.user:
+        print(args.user)
+
+    # On Windows, auto-relaunch with elevation if not already elevated
+    try:
+        if platform.system() == 'Windows':
+            import ctypes
+            is_admin = bool(ctypes.windll.shell32.IsUserAnAdmin())
+            if not is_admin and not args.elevated:
+                # Relaunch with UAC elevation
+                params = ' '.join([f'--user "{args.user}"' if args.user else '', '--elevated']).strip()
+                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{__file__}" {params}', None, 1)
+                sys.exit(0)
+    except Exception:
+        # If elevation check fails, continue; core will still guard and show error
+        pass
+
     main()
     
     
