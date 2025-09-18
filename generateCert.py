@@ -7,15 +7,42 @@ import qrcode
 from PIL import Image, ImageTk
 import os
 from tkinter import filedialog, messagebox
+import argparse
+import sys
 
 TODAY = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-# Certificate data (demo)   ----> In real use, populate dynamically from Secure wipeUI after wipe
-cert_id = "54d978a9-caf2-4e80-8e73-9014eb2542c0"
-device_model = "USB DISK 2.0 USB Device"
-device_SNO = "9F09080590B0"
-wipe_method = "DoD 5220.22-M (3-pass)"
-wipe_timestamp = TODAY
-digital_signature = "sha256:abc2cd3e98f67890123456789002345678900abcdef1234567890abcdef123456"
+# Defaults; can be overridden by CLI args passed from the UI
+# cert_id = "54d978a9-caf2-4e80-8e73-9014eb2542c0"
+# device_model = "USB DISK 2.0 USB Device"
+# device_SNO = "9F09080590B0"
+# wipe_method = "DoD 5220.22-M (3-pass)"
+# wipe_timestamp = TODAY
+# digital_signature = "sha256:abc2cd3e98f67890123456789002345678900abcdef1234567890abcdef123456"
+
+# Accept runtime data from SecureWipe UI if provided
+try:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cert_id", type=str)
+    parser.add_argument("--device_model", type=str)
+    parser.add_argument("--device_sno", type=str)
+    parser.add_argument("--wipe_method", type=str)
+    parser.add_argument("--timestamp", type=str)
+    parser.add_argument("--signature", type=str)
+    args, _ = parser.parse_known_args()
+    if args.cert_id:
+        cert_id = args.cert_id
+    if args.device_model:
+        device_model = args.device_model
+    if args.device_sno:
+        device_SNO = args.device_sno
+    if args.wipe_method:
+        wipe_method = args.wipe_method
+    if args.timestamp:
+        wipe_timestamp = args.timestamp
+    if args.signature:
+        digital_signature = args.signature
+except Exception:
+    pass
 
 
 def generate_qr_code():
