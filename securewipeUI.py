@@ -25,6 +25,10 @@ from pathlib import Path
 import argparse
 import errno
 import re
+import uuid
+import hashlib
+from datetime import datetime, timezone
+import requests
 
 # Import the original Secure Wipe functions
 sys.path.insert(0, os.path.dirname(__file__))
@@ -662,28 +666,7 @@ Filesystem: {self.selected_drive['fstype']}"""
         except Exception as e:
             self.progress_queue.put(("error", f"Error during wiping: {e}"))
             
-    # def format_thread(self):
-    #     """Thread function for formatting disk"""
-    #     try:
-    #         # Get parameters
-    #         disk_path = self.selected_drive['device']
-    #         filesystem = self.filesystem_var.get()
-    #         label = self.label_var.get() if self.label_var.get() else None
-    #         passes = self.passes_var.get()
-    #         pattern = self.pattern_var.get()
-    #         verify = self.verify_var.get()
             
-    #         self.progress_queue.put(("log", f"Starting disk format: {disk_path}"))
-    #         self.progress_queue.put(("log", f"Filesystem: {filesystem}, Label: {label or 'None'}"))
-    #         self.progress_queue.put(("log", f"Passes: {passes}, Pattern: {pattern}"))
-            
-    #         # Call the core formatting logic directly without confirmations
-    #         self.perform_disk_format(disk_path, filesystem, label, passes, pattern, verify)
-            
-    #         self.progress_queue.put(("complete", "Disk formatting completed successfully!"))
-            
-    #     except Exception as e:
-    #         self.progress_queue.put(("error", f"Error during formatting: {e}"))
     def format_thread(self):
         try:
             # Gather parameters
@@ -1071,25 +1054,189 @@ Filesystem: {self.selected_drive['fstype']}"""
     def open_certificate_ui(self):
         """Launch the certificate generator UI in a separate process."""
         try:
-            # Print/log product key if available
+            # Always attempt to open the certificate UI; API push is best-effort
+            certificate_id = str(uuid.uuid4())
+            self.log_message(f"Certificate id: {certificate_id}")
+            productKey = self.product_key if hasattr(self, 'product_key') and self.product_key else None
+
+            # Fetch hardware info for selected drive
+            model, serial = self.get_selected_drive_hardware_info()
+            if model:
+                self.log_message(f"Device Model: {model}")
+            if serial:
+                self.log_message(f"Device Serial: {serial}")
+            device_info = f"{model} (SNO. - {serial})" if (model or serial) else (self.selected_drive.get('name') if self.selected_drive else "")
+
+            # Determine device size (human-readable)
             try:
-                if hasattr(self, 'product_key') and self.product_key:
-                    print(f"Product Key: {self.product_key}")
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    self.log_message(f"Product Key: {self.product_key}")
+                device_size = self.selected_drive.get('size_human') or format_size(self.selected_drive.get('size', 0))
+                if device_size and device_size != 'Unknown':
+                    self.log_message(f"Device Size: {device_size}")
+                else:
+                    device_size = None
             except Exception:
-                pass
+                device_size = None
+
+            # Resolve passes from IntVar
+            try:
+                passes_count = int(self.passes_var.get())
+            except Exception:
+                passes_count = 0
+            passes = f"{passes_count} passes"
+
+            # Determine current free space on selected mount (human-readable)
+            free_human = None
+            try:
+                free_bytes, free_human = self.get_selected_free_space()
+                if free_human:
+                    self.log_message(f"Free Space: {free_human}")
+            except Exception:
+                try:
+                    cached_free = self.selected_drive.get('free', 0)
+                    free_human = format_size(cached_free)
+                except Exception:
+                    free_human = "Unknown"
+
+            method = "DoD 5220.22-M"
+            from datetime import datetime, timezone, timedelta
+            # Define IST timezone (UTC + 5:30)
+            IST = timezone(timedelta(hours=5, minutes=30))
+            # Build generator args and open UI regardless of API outcome
+            ts = datetime.now(IST).strftime("%d-%m-%Y %H:%M:%S")
+            stringToHash = f"{certificate_id}{productKey}{device_info}{device_size}{passes}{free_human}{method}"
+            hashed = hashlib.sha256(stringToHash.encode()).hexdigest()
             script_path = os.path.join(os.path.dirname(__file__), 'generateCert.py')
-            subprocess.Popen([sys.executable, script_path])
+            gen_args = [
+                sys.executable,
+                script_path,
+                "--cert_id", certificate_id,
+                "--device_model", model or "",
+                "--device_sno", serial or "",
+                "--wipe_method", f"{method} ({passes})",
+                "--timestamp", ts,
+                "--signature", f"sha256:{hashed}"
+            ]
+
+            # Best-effort server push when we have a product key
+            try:
+                from pytz import timezone
+                IST = timezone('Asia/Kolkata')
+                if productKey:
+                    data = {
+                        "id": certificate_id,
+                        "product_key": productKey,
+                        "device_name": device_info,
+                        "capacity": free_human,
+                        "passes": passes,
+                        "wipe_date": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S"),
+                        "method": method,
+                        "hash": hashed
+                    }
+                    url = "https://secure-wipe-2gyy.onrender.com/api/cert/create"
+                    response = requests.post(url, json=data, timeout=10)
+                    if response.status_code == 201:
+                        self.log_message("Certificate created on server", "SUCCESS")
+                    else:
+                        self.log_message(f"Server save failed: {response.text}", "WARNING")
+                else:
+                    self.log_message("No product key provided; skipping server save", "WARNING")
+            except Exception as api_err:
+                self.log_message(f"Server save error: {api_err}", "WARNING")
+
+            # Open generator UI
+            subprocess.Popen(gen_args)
             self.log_message("Opened certificate generator", "SUCCESS")
         except Exception as e:
             self.log_message(f"Failed to open certificate UI: {e}", "ERROR")
+
+    def get_selected_drive_hardware_info(self):
+        """Return (model, serial) for the currently selected drive, best-effort per OS."""
+        try:
+            if not self.selected_drive:
+                return (None, None)
+            system = platform.system()
+            if system == 'Windows':
+                try:
+                    disk_num = None
+                    drive_letter = None
+                    mp = self.selected_drive.get('mountpoint') or ''
+                    if isinstance(mp, str) and len(mp) >= 2 and mp[1] == ':':
+                        drive_letter = mp[0]
+                    dev = self.selected_drive.get('device') or ''
+                    if not drive_letter and isinstance(dev, str) and len(dev) >= 2 and dev[1] == ':':
+                        drive_letter = dev[0]
+                    if drive_letter:
+                        ps_cmd = f"(Get-Partition -DriveLetter {drive_letter}).DiskNumber"
+                        out = subprocess.check_output(['powershell', '-Command', ps_cmd], stderr=subprocess.STDOUT).decode('utf-8').strip()
+                        m = re.search(r"(\d+)", out)
+                        if m:
+                            disk_num = m.group(1)
+                    if disk_num is not None:
+                        ps_info = (
+                            f"$d=Get-CimInstance Win32_DiskDrive | Where-Object {{$_.Index -eq {disk_num}}};"
+                            f"Write-Output ($d.Model);Write-Output ($d.SerialNumber)"
+                        )
+                        info = subprocess.check_output(['powershell', '-Command', ps_info], stderr=subprocess.STDOUT).decode('utf-8').strip().splitlines()
+                        model = info[0].strip() if len(info) > 0 and info[0].strip() else None
+                        serial = info[1].strip() if len(info) > 1 and info[1].strip() else None
+                        return (model, serial)
+                except Exception:
+                    pass
+                return (None, None)
+            elif system == 'Linux':
+                try:
+                    mount = self.selected_drive.get('mountpoint') or ''
+                    if mount:
+                        ls = subprocess.check_output(['lsblk', '-no', 'NAME,MOUNTPOINT'], text=True).splitlines()
+                        dev_base = None
+                        for line in ls:
+                            parts = line.split()
+                            if len(parts) == 2 and parts[1] == mount:
+                                part_name = parts[0]
+                                parent = subprocess.check_output(['lsblk', '-no', 'PKNAME', f'/dev/{part_name}'], text=True).strip()
+                                dev_base = parent if parent else part_name
+                                break
+                        if dev_base:
+                            model = subprocess.check_output(['cat', f'/sys/block/{dev_base}/device/model'], text=True).strip()
+                            serial = None
+                            try:
+                                serial = subprocess.check_output(['cat', f'/sys/block/{dev_base}/device/serial'], text=True).strip()
+                            except Exception:
+                                pass
+                            return (model or None, serial or None)
+                except Exception:
+                    pass
+                return (None, None)
+            elif system == 'Darwin':
+                try:
+                    sp = subprocess.check_output(['system_profiler', 'SPStorageDataType'], text=True)
+                    model = self.selected_drive.get('name')
+                    m = re.search(r"Serial Number: (\S+)", sp)
+                    serial = m.group(1) if m else None
+                    return (model, serial)
+                except Exception:
+                    return (self.selected_drive.get('name'), None)
+            else:
+                return (self.selected_drive.get('name'), None)
+        except Exception:
+            return (None, None)
+
+    def get_selected_free_space(self):
+        """Return (free_bytes, free_human) for the selected drive/partition."""
+        try:
+            if not self.selected_drive:
+                return (0, None)
+            mount_point = self.selected_drive.get('mountpoint')
+            if mount_point:
+                free = get_free_space(mount_point)
+                return (free, format_size(free))
+        except Exception:
+            pass
+        try:
+            free = self.selected_drive.get('free', 0)
+            return (free, format_size(free))
+        except Exception:
+            return (0, None)
 
 def main():
     # Ensure virtual environment is set up
