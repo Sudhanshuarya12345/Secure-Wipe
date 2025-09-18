@@ -1,6 +1,6 @@
 from tkinter import *
 import subprocess
-import sys
+import sys, json
 import requests
 
 def get_userDetails():
@@ -9,10 +9,10 @@ def get_userDetails():
     try:
     # Send GET request
         response = requests.get(url, timeout=10)
-
-        if response.status_code == 200:
+        print(response)
+        if response.json().get("valid"):
             root.destroy()  # Close the login window
-            process = subprocess.Popen([sys.executable, "securewipeUI.py"])      # passing user as argument
+            process = subprocess.Popen([sys.executable, "securewipeUI.py", "--product_key", product_key])
             process.wait()
         else:
             l1.config(text="❌ Invalid Email or Product Key. Try again.", fg="red")
@@ -20,7 +20,8 @@ def get_userDetails():
 
     except requests.exceptions.RequestException as e:
         l1.config(text="❌ Network error. Please try again later.", fg="red")
-        
+
+
 # ---------------- Validation Function ----------------
 def validate_inputs(*args):
     product_key = prod_key_entry.get().strip()
@@ -53,7 +54,7 @@ BANNER = [
 
 root = Tk()
 root.title("Secure Wipe - Login")
-root.geometry("930x640")
+root.geometry("930x600")
 root.resizable(False, False)
 root.configure(bg="white") 
 
@@ -104,7 +105,7 @@ prod_key_entry.bind("<KeyRelease>", validate_inputs)
 
 
 l1 = Label(loginFrame, text="*** enter valid Email id and Product Key. ***", fg="yellow", bg="#777B7E", font=("Arial", 10))
-l1.grid(row=3, column=0, columnspan=3, pady=5)
+l1.grid(row=3, column=1, columnspan=3, pady=5)
 
 # Submit Button
 submit_btn = Button( loginFrame, text="Submit", font=("Arial", 14, "bold"), bg="#272A29", fg="black", 

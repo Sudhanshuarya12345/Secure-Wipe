@@ -11,7 +11,8 @@ from tkinter import filedialog, messagebox
 TODAY = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 # Certificate data (demo)   ----> In real use, populate dynamically from Secure wipeUI after wipe
 cert_id = "54d978a9-caf2-4e80-8e73-9014eb2542c0"
-device_name = "LAPTOP-J6TVQF9T"
+device_model = "USB DISK 2.0 USB Device"
+device_SNO = "9F09080590B0"
 wipe_method = "DoD 5220.22-M (3-pass)"
 wipe_timestamp = TODAY
 digital_signature = "sha256:abc2cd3e98f67890123456789002345678900abcdef1234567890abcdef123456"
@@ -21,7 +22,8 @@ def generate_qr_code():
     """Generate QR code containing certificate data as JSON"""
     cert_data = {
         "cert_id": cert_id,
-        "device_name": device_name,
+        "device_model": device_model,
+        "device_SNO": device_SNO,
         "wipe_method": wipe_method,
         "wipe_timestamp": wipe_timestamp,
         "digital_signature": digital_signature,
@@ -92,11 +94,11 @@ def generate_pdf():
     c.setFont("Helvetica", 12)
     c.drawString(left_x, height - 245, cert_id)
 
-    # Device Name
+    # Device info
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(left_x, height - 270, "Device Name")
+    c.drawString(left_x, height - 270, "Device Model")
     c.setFont("Helvetica", 12)
-    c.drawString(left_x, height - 285, device_name)
+    c.drawString(left_x, height - 285, f"{device_model}(SNO. - {device_SNO})")
 
     # Wipe Method
     c.setFont("Helvetica-Bold", 10)
@@ -172,8 +174,8 @@ cert_canvas.create_text(275, 175, text="and permanently wiped.", font=("Arial", 
 cert_canvas.create_text(40, 210, text="Certificate ID", font=("Arial", 10, "bold"), anchor="w")
 cert_canvas.create_text(40, 228, text=cert_id, font=("Arial", 12), anchor="w")
 
-cert_canvas.create_text(40, 250, text="Device Name", font=("Arial", 10, "bold"), anchor="w")
-cert_canvas.create_text(40, 268, text=device_name, font=("Arial", 12), anchor="w")
+cert_canvas.create_text(40, 250, text="Device info", font=("Arial", 10, "bold"), anchor="w")
+cert_canvas.create_text(40, 268, text=f"{device_model} (SNO. - {device_SNO})", font=("Arial", 12), anchor="w")
 
 # Bottom row
 cert_canvas.create_text(40, 290, text="Wipe Method", font=("Arial", 10, "bold"), anchor="w")

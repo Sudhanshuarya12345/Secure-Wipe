@@ -101,9 +101,6 @@ class SecureWipeGUI:
         # Drive Selection Tab
         self.create_drive_tab()
         
-        # Operation Mode Tab
-        self.create_mode_tab()
-        
         # Settings Tab
         self.create_settings_tab()
         
@@ -171,13 +168,14 @@ class SecureWipeGUI:
         left_buttons = ttk.Frame(button_frame)
         left_buttons.pack(side=tk.LEFT)
         
+        self.format_btn = ttk.Button(left_buttons, text="Complete secure wipe", 
+                                    command=self.format_disk_gui, state=tk.DISABLED)
+        self.format_btn.pack(side=tk.LEFT, padx=5)
+        
         self.wipe_btn = ttk.Button(left_buttons, text="Free Space Wipe", 
                                   command=self.wipe_free_space_gui, state=tk.DISABLED)
         self.wipe_btn.pack(side=tk.LEFT, padx=5)
         
-        self.format_btn = ttk.Button(left_buttons, text="Complete secure wipe", 
-                                    command=self.format_disk_gui, state=tk.DISABLED)
-        self.format_btn.pack(side=tk.LEFT, padx=5)
         
         # Right side buttons
         right_buttons = ttk.Frame(button_frame)
@@ -740,6 +738,10 @@ Filesystem: {self.selected_drive['fstype']}"""
         self.progress_bar.config(mode='determinate')
         self.progress_bar['value'] = 0
         self.progress_var.set("Ready")
+        try:
+            self.status_var.set("Ready")
+        except Exception:
+            pass
         
         # Clear time estimate display
         self.time_estimate_var.set("")
@@ -812,21 +814,23 @@ Filesystem: {self.selected_drive['fstype']}"""
                 elif msg_type == "complete":
                     self.log_message(message)
                     self.progress_var.set(message)
+                    # Ensure status/progress are reset before popup
+                    self.finish_operation()
                     messagebox.showinfo("Success", message)
                     # Enable certificate button on success
                     print("Operation complete, trying to enabling certificate button")
                     try:
                         time.sleep(1)
-                        # print("Enabling certificate button")
                         self.certificate_btn.config(state=tk.NORMAL)
 # ---------------------------------------------------------------------------------------------
                     except Exception:
                         print("Failed to enable certificate button")
                         pass
-                    self.finish_operation()
                 elif msg_type == "error":
                     self.log_message(f"ERROR: {message}")
                     self.progress_var.set("Error occurred")
+                    # Ensure status/progress are reset before popup
+                    self.finish_operation()
                     messagebox.showerror("Error", message)
                     # Keep certificate disabled on error
                     try:
@@ -874,31 +878,6 @@ Filesystem: {self.selected_drive['fstype']}"""
         thread.daemon = True
         thread.start()
 
-    def create_mode_tab(self):
-        """Create operation mode selection tab"""
-        mode_frame = ttk.Frame(self.notebook)
-        self.notebook.add(mode_frame, text="Operation Mode")
-        
-        # Mode selection
-        mode_select_frame = ttk.LabelFrame(mode_frame, text="Select Operation Mode")
-        mode_select_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        # Radio buttons for operation mode
-        ttk.Radiobutton(mode_select_frame, text="Free Space Wiping", 
-                       variable=self.operation_mode_var, value="freespace").pack(anchor=tk.W, padx=10, pady=5)
-        
-        freespace_desc = ttk.Label(mode_select_frame, 
-                                  text="• Wipes only free space on the selected drive\n• Preserves existing files and data\n• Faster operation\n• Good for regular maintenance", 
-                                  font=('Arial', 9), foreground='gray')
-        freespace_desc.pack(anchor=tk.W, padx=30, pady=(0, 10))
-        
-        ttk.Radiobutton(mode_select_frame, text="Full Disk Format & Wipe", 
-                       variable=self.operation_mode_var, value="format").pack(anchor=tk.W, padx=10, pady=5)
-        
-        format_desc = ttk.Label(mode_select_frame, 
-                               text="• DESTROYS ALL DATA on the selected drive\n• Formats, wipes, then formats again\n• Maximum security\n• Use for drive disposal or complete sanitization", 
-                               font=('Arial', 9), foreground='red')
-        format_desc.pack(anchor=tk.W, padx=30, pady=(0, 10))
 
     def create_performance_tab(self):
         """Create benchmark and performance tab"""
@@ -1075,6 +1054,7 @@ Filesystem: {self.selected_drive['fstype']}"""
                         # Disk number should be an integer on its own line
                         num_match = re.search(r"(\d+)", result)
                         if num_match:
+                            # Pass numeric disk id; core will handle mountpoint resolution
                             target = num_match.group(1)
                 except Exception as e:
                     self.progress_queue.put(("log", f"Warning: Could not resolve disk number automatically: {e}"))
@@ -1091,6 +1071,20 @@ Filesystem: {self.selected_drive['fstype']}"""
     def open_certificate_ui(self):
         """Launch the certificate generator UI in a separate process."""
         try:
+            # Print/log product key if available
+            try:
+                if hasattr(self, 'product_key') and self.product_key:
+                    print(f"Product Key: {self.product_key}")
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    self.log_message(f"Product Key: {self.product_key}")
+            except Exception:
+                pass
             script_path = os.path.join(os.path.dirname(__file__), 'generateCert.py')
             subprocess.Popen([sys.executable, script_path])
             self.log_message("Opened certificate generator", "SUCCESS")
@@ -1108,6 +1102,13 @@ def main():
     # Create and run GUI
     root = tk.Tk()
     app = SecureWipeGUI(root)
+    # Attach product key if provided via environment
+    try:
+        pk = os.environ.get('SECUREWIPE_PRODUCT_KEY')
+        if pk:
+            setattr(app, 'product_key', pk)
+    except Exception:
+        pass
     
     try:
         root.mainloop()
@@ -1118,6 +1119,7 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", type=str, help="User details")
+    parser.add_argument("--product_key", type=str, help="Product key passed from login")
     parser.add_argument("--elevated", action="store_true", help="Internal flag to indicate elevated relaunch")
     args = parser.parse_args()
     if args.user:
@@ -1130,16 +1132,23 @@ if __name__ == "__main__":
             is_admin = bool(ctypes.windll.shell32.IsUserAnAdmin())
             if not is_admin and not args.elevated:
                 # Relaunch with UAC elevation
-                params = ' '.join([f'--user "{args.user}"' if args.user else '', '--elevated']).strip()
+                params_list = []
+                if args.user:
+                    params_list.append(f'--user "{args.user}"')
+                if args.product_key:
+                    params_list.append(f'--product_key "{args.product_key}"')
+                params_list.append('--elevated')
+                params = ' '.join(params_list).strip()
                 ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{__file__}" {params}', None, 1)
                 sys.exit(0)
     except Exception:
         # If elevation check fails, continue; core will still guard and show error
         pass
-
+    
+    # Optionally make product_key available to GUI if needed later
+    if args.product_key:
+        os.environ['SECUREWIPE_PRODUCT_KEY'] = args.product_key
+    
     main()
     
     
-    
-    
-# check line 799 for certificate button enabling

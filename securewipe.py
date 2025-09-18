@@ -1800,9 +1800,12 @@ def format_disk(disk_path, filesystem='exfat', label=None, no_confirm=False, pas
                 fs_format = fs_map.get(filesystem.lower(), 'NTFS')
                 
                 try:
+                    # Derive numeric disk number for diskpart even if a PhysicalDrive path was provided
+                    disk_num_match = re.search(r"(\d+)$", disk_id)
+                    disk_num = disk_num_match.group(1) if disk_num_match else disk_id
                     # Write the diskpart script
                     with open(script_file, 'w') as f:
-                        f.write(f"select disk {disk_id}\n")
+                        f.write(f"select disk {disk_num}\n")
                         f.write("clean\n")
                         f.write("create partition primary\n")
                         f.write("select partition 1\n")
@@ -1888,10 +1891,10 @@ def format_disk(disk_path, filesystem='exfat', label=None, no_confirm=False, pas
             try:
                 # For Windows, use wmic to get the drive letter
                 drive_letter = None
-                if re.match(r'\\\\.\\PhysicalDrive\d+', disk_path):
-                    # Extract the disk number
-                    disk_num = re.search(r'PhysicalDrive(\d+)', disk_path).group(1)
-                    # Get partition info for the disk
+                # Accept PhysicalDrive path, numeric id, or plain id string
+                disk_num_match = re.search(r'(\d+)$', disk_path)
+                if disk_num_match:
+                    disk_num = disk_num_match.group(1)
                     ps_cmd = f'Get-Partition -DiskNumber {disk_num} | Select-Object -ExpandProperty DriveLetter'
                     drive_letter = subprocess.check_output(['powershell', '-Command', ps_cmd], 
                                                          stderr=subprocess.STDOUT).decode('utf-8').strip()
