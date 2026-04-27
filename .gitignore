@@ -52,12 +52,3 @@ dist/
 docs/
 product_key.pem
 agents.md
-
-
-audit/
-core/
-firmware/
-metadata/
-ui/
-utils/
-diskio/
