@@ -142,7 +142,9 @@ class WipePipeline:
 
         try:
             logger.info("WipePipeline initialized. Starting %d steps...", len(pipeline))
+            self._pipeline_total_steps = len(pipeline)
             for idx, step_name in enumerate(pipeline):
+                self._pipeline_step_index = idx + 1
                 if self.cancel_event and self.cancel_event.is_set():
                     raise RuntimeError("Wipe operation aborted by user")
                     
@@ -154,10 +156,10 @@ class WipePipeline:
                 try:
                     self._emit_progress(
                         current_step=step_name,
-                        step_index=idx + 1,
-                        total_steps=len(pipeline),
+                        step_index=self._pipeline_step_index,
+                        total_steps=self._pipeline_total_steps,
                     )
-                    logger.info("[%d/%d] Executing step: %s", idx + 1, len(pipeline), step_name)
+                    logger.info("[%d/%d] Executing step: %s", self._pipeline_step_index, self._pipeline_total_steps, step_name)
                     handler()
                     self._log_step(step_name, 'success')
                     logger.info("Step %s completed successfully.", step_name)
@@ -351,6 +353,8 @@ class WipePipeline:
                     total_passes=passes,
                     pattern_name=self.pattern,
                     current_step='overwrite_passes',
+                    step_index=getattr(self, '_pipeline_step_index', 0),
+                    total_steps=getattr(self, '_pipeline_total_steps', 0),
                 )
 
             success, detail = write_to_raw_disk(
