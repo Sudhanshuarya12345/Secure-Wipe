@@ -194,8 +194,12 @@ class DriveSelectionTab(ttk.Frame):
 
     def update_progress(self, p: WipeProgress):
         self.progress_var.set(f"Step {p.step_index}/{p.total_steps}: {p.current_step}")
-        
-        overall_pct = (p.bytes_done / max(p.total_bytes, 1)) * 100
+
+        bytes_done = p.bytes_done or 0
+        total_bytes = p.total_bytes or 0
+        has_known_total = total_bytes > 0
+
+        overall_pct = (bytes_done / max(total_bytes, 1)) * 100 if has_known_total else 0.0
         self.progress_bar['value'] = overall_pct
         
         import time
@@ -204,23 +208,24 @@ class DriveSelectionTab(ttk.Frame):
             self._last_eta_update = 0
             self._eta_str = "Calculating ETA..."
             self._last_step = p.current_step
-            self._start_bytes = p.bytes_done
+            self._start_bytes = bytes_done
 
         now = time.time()
         elapsed = now - self._wipe_start_time
         
-        if p.bytes_done > getattr(self, '_start_bytes', 0) and elapsed > 5 and (now - getattr(self, '_last_eta_update', 0) > 1):
-            bytes_written_this_step = p.bytes_done - self._start_bytes
+        if bytes_done > getattr(self, '_start_bytes', 0) and elapsed > 5 and (now - getattr(self, '_last_eta_update', 0) > 1):
+            bytes_written_this_step = bytes_done - self._start_bytes
             rate = bytes_written_this_step / elapsed
-            bytes_left = max(p.total_bytes - p.bytes_done, 0)
+            bytes_left = max(total_bytes - bytes_done, 0)
             seconds_left = bytes_left / rate if rate > 0 else 0
             
             from utils.formatting import format_time_human_readable
             self._eta_str = format_time_human_readable(seconds_left)
             self._last_eta_update = now
-            
-        eta_display = f" | ETA: {self._eta_str}" if 0 < overall_pct < 100 and p.current_step == 'overwrite_passes' else ""
-        
+
+        show_eta = has_known_total and 0 < overall_pct < 100 and p.current_step == 'overwrite_passes'
+        eta_display = f" | ETA: {self._eta_str}" if show_eta else ""
+
         self.pass_progress_var.set(f"Pass {p.current_pass}/{p.total_passes} | Pattern: {p.pattern_name} | {overall_pct:.1f}%{eta_display}")
         self.pass_progress_bar['value'] = overall_pct
 

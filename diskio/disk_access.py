@@ -70,6 +70,33 @@ def _get_disk_size_windows(handle):
     return None
 
 
+def _get_disk_size_unix(file_obj):
+    """Best-effort raw device size discovery on Unix-like systems.
+
+    Returns:
+        int | None: Size in bytes when available.
+    """
+    # Linux block devices: BLKGETSIZE64 ioctl
+    if platform.system() == 'Linux':
+        try:
+            import fcntl
+            import struct
+
+            BLKGETSIZE64 = 0x80081272
+            buf = bytearray(8)
+            fcntl.ioctl(file_obj.fileno(), BLKGETSIZE64, buf)
+            return struct.unpack('<Q', bytes(buf))[0]
+        except Exception as exc:
+            logger.debug("BLKGETSIZE64 failed: %s", exc)
+
+    # Generic fallback (often 0 for raw block devices, but harmless).
+    try:
+        size = os.fstat(file_obj.fileno()).st_size
+        return size if size > 0 else None
+    except Exception:
+        return None
+
+
 def _lock_volume_windows(handle):
     """Send FSCTL_LOCK_VOLUME to a Windows disk handle.
 
@@ -373,6 +400,12 @@ def _write_to_raw_disk_unix(raw_path, mode, block_size, progress_callback=None, 
         with open(raw_path, 'r+b') as f:
             data = _build_block(mode, block_size) if mode in ('zeroes', 'ones') else None
             bytes_written_total = 0
+            disk_size = _get_disk_size_unix(f)
+            last_logged_bytes = 0
+            log_interval_bytes = block_size * 32  # ~256 MB at default block size
+
+            if progress_callback:
+                progress_callback(0, disk_size or 0)
 
             while True:
                 if cancel_event and cancel_event.is_set():
@@ -389,7 +422,15 @@ def _write_to_raw_disk_unix(raw_path, mode, block_size, progress_callback=None, 
                     raise
 
                 if progress_callback:
-                    progress_callback(bytes_written_total, None)
+                    progress_callback(bytes_written_total, disk_size or 0)
+
+                if bytes_written_total - last_logged_bytes >= log_interval_bytes:
+                    if disk_size:
+                        pct = (bytes_written_total / disk_size) * 100
+                        logger.info("Overwrite progress: %.1f%% (%d/%d bytes)", pct, bytes_written_total, disk_size)
+                    else:
+                        logger.info("Overwrite progress: %d bytes written", bytes_written_total)
+                    last_logged_bytes = bytes_written_total
 
                 if f.tell() % (block_size * 32) == 0:
                     f.flush()
@@ -399,6 +440,9 @@ def _write_to_raw_disk_unix(raw_path, mode, block_size, progress_callback=None, 
                 os.fsync(f.fileno())
             except Exception:
                 pass
+
+            if progress_callback:
+                progress_callback(bytes_written_total, disk_size or 0)
 
         return True
     except Exception as e:
